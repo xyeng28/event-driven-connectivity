@@ -6,7 +6,7 @@ from websockets import ConnectionClosedOK
 from datetime import datetime as dtt
 from dateutil import parser
 
-import constants
+from src import constants
 from src.data.sources.tiingo_ws import get_top_book_trade_event_payload, tiingo_ws_request, iex_stocks_feed, fx_feed, \
     crypto_feed
 from src.data import data_config as data_cfg
@@ -50,7 +50,6 @@ class TestTiingoWS(unittest.TestCase):
         data_feeds = asyncio.run(run_tiingo_ws_request())
         self.assertEqual(data_feeds, [['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7], ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7]])
         mock_ws.send.assert_awaited_once_with(json.dumps(subscribe_payload))
-        print('test_tiingo_ws_request completed')
 
     def test_iex_stocks_feed(self):
         tickers = {
@@ -70,7 +69,6 @@ class TestTiingoWS(unittest.TestCase):
                 feeds.append(await queue.get())
             return feeds
         result = asyncio.run(run_test_iex_stocks_feed())
-        print(result)
         feed = result[0]['market_feed']
 
         exp_event_time = parser.isoparse('1990-01-22T12:37:33.544333-05:00')
@@ -112,7 +110,6 @@ class TestTiingoWS(unittest.TestCase):
                 feeds.append(await queue.get())
             return feeds
         result = asyncio.run(run_test_fx_feed())
-        print(result)
         feed = result[0]['market_feed']
 
         exp_event_time = parser.isoparse('1990-01-22T16:35:45.725000+00:00')
