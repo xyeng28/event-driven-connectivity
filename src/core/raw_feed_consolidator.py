@@ -1,3 +1,10 @@
+"""
+Raw Feed Consolidator Module
+
+This module provides functions to consolidate market feed queues (trade, quote, reference price)
+into HDF5 files. Uses asyncio for asynchronous processing.
+"""
+
 import asyncio
 import pandas as pd
 from datetime import datetime as dtt
@@ -8,6 +15,11 @@ from src.logger import get_logger
 logger = get_logger(__name__)
 
 async def consolidate_queue(queue, event_type, h5_dir:str='src/data/consol_feeds/', buffer_size:int=3):
+    """
+    Continuously consumes message from a queue and store them into a HDF5 file
+    Buffers messages until buffer_size is reached, removes duplicates and
+    appends data to a file named by event_type and current date
+    """
     logger.info(f'Consolidating queue data for {event_type}')
     buffer = []
 
@@ -24,6 +36,7 @@ async def consolidate_queue(queue, event_type, h5_dir:str='src/data/consol_feeds
 
             buffer.append(data)
             logger.info(f'len(buffer) for {event_type}:{len(buffer)}')
+
             if len(buffer) >= buffer_size:
                 logger.info(f'Buffer size {len(buffer)} >= threshold {buffer_size}. Writing to {h5_fp}...')
                 df = pd.DataFrame(buffer)
@@ -40,6 +53,9 @@ async def consolidate_queue(queue, event_type, h5_dir:str='src/data/consol_feeds
             queue.task_done()
 
 async def run_consolidator():
+    """
+    Runs all queue consolidators concurrently for trade, quote and reference price events
+    """
     logger.info(f'Running consolidator')
     consumers = [
         consolidate_queue(trade_queue, EVENT_TYPE_TRADE),

@@ -1,24 +1,18 @@
 # Event Driven Connectivity
 
 ## Description
-This project collects market data (stocks, ETFs, FX, crypto) from several vendors such as Tiingo, via websockets, webhooks and async polling.\
-It performs simple data normalisation and writes consolidated event-driven feeds by event type (trade, quote, reference price) to HDF5 files for downstream analytics.\
+This project collects market data (stocks, ETFs, FX, crypto) from several vendors such as Tiingo, via websockets, webhooks (to be implemented) and async polling.\
+It performs simple data normalisation and writes consolidated event-driven feeds by event type (trade, quote, reference price) to HDF5 files for downstream analytics.
+
 ⚠️ Designed for demonstration purposes only.\
 The main goal is to **showcase connectivity and consolidation of event-driven feeds** from multiple data sources, not to provide a production-ready system or perform data analytics.
-
-## Disclaimer & Usage Policy
-This repository contains code developed for **educational and demonstration purposes only**.
-- **"As-Is":** Provided without any express or implied warranties of merchantability, fitness for a particular purpose, or non-infringement.
-- **No Liability:** All liability is disclaimed for damages, data loss, or issues arising from use or misuse.  
-- **No Downloads/Distribution:** Do **not** download or deploy this code for actual applications without review and modification.
-- **Data:** Any sample data shown is placeholder or dummy data, not real or redistributed information.
 
 ## Features
 - Async streaming of multiple asset types (stocks, ETFs, FX, crypto)
 - Buffering of incoming feeds to reduce memory overhead
+- Multi-queue design for different event types from multiple data feeds
 - Simple normalisation of feed data
 - HDF5 storage with daily partitioning by event type
-- Multi-queue design for independent data feeds
 
 ## Design Highlights
 - Async architecture demonstrates concurrent ingestion of event-driven feeds with multiple asset types
@@ -30,8 +24,8 @@ This repository contains code developed for **educational and demonstration purp
 
 Starting the main application:
 ```bash
-uvicorn main:app --port 8000 --reload (for development)
-uvicorn main:app --port 8000
+uvicorn src.main:app --port 8000 --reload (for development)
+uvicorn src.main:app --port 8000
 ```
 Stopping and Restarting the Process (Eg. Port in use 8000):
 Ctrl + C
@@ -70,5 +64,11 @@ taskkill /PID <pid> /F
 ![Consolidated Trades Feeds Sample](assets/consol_feeds_trade.png)\
 ![Consolidated Reference Prices Feeds Sample](assets/consol_feeds_ref_px.png)
 
+## Disclaimer & Usage Policy
+This repository contains code developed for **educational and demonstration purposes only**.
+- **"As-Is":** Provided without any express or implied warranties of merchantability, fitness for a particular purpose, or non-infringement.
+- **No Liability:** All liability is disclaimed for damages, data loss, or issues arising from use or misuse.  
+- **No Downloads/Distribution:** Do **not** download or deploy this code for actual applications without review and modification.
+- **Data:** Any sample data shown is placeholder or dummy data, not real or redistributed information.
 
 

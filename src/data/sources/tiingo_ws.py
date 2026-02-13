@@ -1,4 +1,18 @@
+"""
+Tiingo WebSocket Feed Module
+
+Provides asynchronous functions to connect to Tiingo WebSocket feeds for
+stocks, crypto, and FX market data.
+
+Key features:
+- Subscribes to market data with customisable payloads and threshold levels
+- Yields live market data as async generator objects
+- Simple normalisation of data from different market feeds
+- Automatically reconnects if the WebSocket connection closes
+"""
+
 import asyncio
+from typing import AsyncGenerator
 import websockets
 import json
 import ssl
@@ -13,13 +27,18 @@ from src.core.queue_manager import trade_queue, quote_queue, ref_px_queue
 
 logger = get_logger(__name__)
 
-def get_top_book_trade_event_payload(tickers:list, threshold_level:int=6):
-    '''
-    A "thresholdLevel" of 0 means you will get ALL Top-of-Book AND Last Trade updates.
-    A "thresholdLevel" of 5 means you will get all Last Trade updates and only Quote updates that are deemed major updates by our system.
-    tickers: ['spy', 'uso']. If you pass "*" as a ticker, it will mean you will get data for ALL tickers.
-    :return:
-    '''
+def get_top_book_trade_event_payload(tickers:list, threshold_level:int=6) -> dict:
+    """
+    Prepare subscribe payload for Tiingo Websocket API request
+
+    Args:
+        tickers: List of ticker symbols. "*" as a ticker symbol gets data for ALL tickers. Eg. ['spy', 'uso']
+        threshold_level:
+            threshold_level of 0 gets all Top-of-Book AND Last Trade updates.
+            threshold_level of 5 gets all Last Trade updates and only Quote updates that are deemed major updates by Tiingo.
+    Returns:
+        dict: Subscribe payload for Tiingo Websocket API
+    """
     tickers = [ticker.lower() for ticker in tickers]
     subscribe_payload = {
         'eventName': 'subscribe',
@@ -32,24 +51,45 @@ def get_top_book_trade_event_payload(tickers:list, threshold_level:int=6):
     logger.debug(f'subscribe_payload:{subscribe_payload}')
     return subscribe_payload
 
-async def tiingo_ws_request(subscribe_payload:dict, ws_url:str):
-    try:
-        ssl_context = ssl.create_default_context(cafile=certifi.where())
-        async with websockets.connect(ws_url, ssl=ssl_context) as ws:
-            await ws.send(json.dumps(subscribe_payload))
-            while True:
-                msg = await ws.recv()
-                msg_json = json.loads(msg)
-                logger.debug(f'msg_json:{msg_json}')
-                if msg_json and msg_json.get('messageType') not in ('I', 'H'):
-                    data = msg_json.get('data')
-                    yield data
+async def tiingo_ws_request(subscribe_payload:dict, ws_url:str) -> AsyncGenerator[list, None]:
+    """
+    Connect to Tiingo Websocket feed and yield market data
+    Filters out Heartbeat (H) and Connection Initialisation (I) messages
 
-    except websockets.ConnectionClosed as e:
-        logger.error(f'Connection closed due to {e}. \nReconnecting...')
-        await asyncio.sleep(10)
+    Args:
+        subscribe_payload: Subscribe payload for Tiingo Websocket API request
+        ws_url: Websocket URL of the Tiingo feed
+    Yields:
+        list: Market data
+    """
+    while True:
+        try:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            async with websockets.connect(ws_url, ssl=ssl_context) as ws:
+                await ws.send(json.dumps(subscribe_payload))
+                while True:
+                    msg = await ws.recv()
+                    msg_json = json.loads(msg)
+                    logger.debug(f'msg_json:{msg_json}')
+                    if msg_json and msg_json.get('messageType') not in ('I', 'H'):
+                        data = msg_json.get('data')
+                        logger.info(f'data:{data}')
+                        yield data
+
+        except websockets.ConnectionClosed as e:
+            logger.error(f'Connection closed due to {e}. \nReconnecting...')
+            await asyncio.sleep(10)
 
 async def iex_stocks_feed(tickers:dict, threshold_level:int=6):
+    """
+    Push normalised reference price data into market_feed queue
+    The message is wrapped in a dictionary with the key market_feed
+    so that the consolidator processes it consistently with other market feeds
+
+    Args:
+        tickers: Dict of ticker asset type and ticker symbols
+        threshold_level: threshold_level of 6 gets price updates when a reference price change is detected
+    """
     subscribe_payload = get_top_book_trade_event_payload(tickers['STK']+tickers['ETF'], threshold_level=threshold_level)
     async for raw_data in tiingo_ws_request(subscribe_payload, data_cfg.TIINGO_WS_IEX_URL):
         logger.debug(f'raw_data:{raw_data}')
@@ -71,10 +111,13 @@ async def iex_stocks_feed(tickers:dict, threshold_level:int=6):
 
 async def fx_feed(tickers:dict, threshold_level:int=5):
     """
-    A "thresholdLevel" of 5 means you will get ALL Top-of-Book updates.
-    :param tickers:
-    :param threshold_level:
-    :return:
+    Push normalised FX quotes data into market_feed queue
+    The message is wrapped in a dictionary with the key market_feed
+    so that the consolidator processes it consistently with other market feeds
+
+    Args:
+        tickers: Dict of ticker asset type and ticker symbols
+        threshold_level: threshold_level of 5 gets ALL Top-of-Book updates.
     """
     subscribe_payload = get_top_book_trade_event_payload(tickers['FX'], threshold_level=threshold_level)
     async for raw_data in tiingo_ws_request(subscribe_payload, data_cfg.TIINGO_WS_FX_URL):
@@ -101,12 +144,15 @@ async def fx_feed(tickers:dict, threshold_level:int=5):
 
 async def crypto_feed(tickers:dict, threshold_level:int=5):
     """
-    A higher "thresholdLevel" means you will get less updates, which could potentially be more relevant.
-    A "thresholdLevel" of 2 means you will get Top-of-Book AND Last Trade updates.
-    A "thresholdLevel" of 5 means you will get only Last Trade updates
-    :param tickers:
-    :param threshold_level:
-    :return:
+    Push normalised Crypto trades and quotes data into market_feed queue
+    The message is wrapped in a dictionary with the key market_feed
+    so that the consolidator processes it consistently with other market feeds
+
+    Args:
+        tickers: Dict of ticker asset type and ticker symbols
+        threshold_level:
+            A "thresholdLevel" of 2 gets Top-of-Book AND Last Trade updates.
+            A "thresholdLevel" of 5 gets only Last Trade updates
     """
     subscribe_payload = get_top_book_trade_event_payload(tickers['CRYPTO'], threshold_level=threshold_level)
     async for raw_data in tiingo_ws_request(subscribe_payload, data_cfg.TIINGO_WS_CRYPTO_URL):
