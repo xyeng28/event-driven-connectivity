@@ -60,8 +60,11 @@ taskkill /PID <pid> /F
 ## Sample Screenshots
 ### Sample HDF5 Data
 *Example HDF5 file and data shown here is **synthetic** and does not contain any real vendor data.*\
+Consolidated Quotes Feeds:
 ![Consolidated Quotes Feeds Sample](assets/consol_feeds_quote.png)\
+Consolidated Trades Feeds:
 ![Consolidated Trades Feeds Sample](assets/consol_feeds_trade.png)\
+Consolidated Reference Prices Feeds:
 ![Consolidated Reference Prices Feeds Sample](assets/consol_feeds_ref_px.png)
 
 ## Disclaimer & Usage Policy
