@@ -2,7 +2,7 @@
 
 ## Description
 This project collects market data (stocks, ETFs, FX, crypto) from several vendors such as Tiingo, via websockets, webhooks (to be implemented) and async polling.\
-It performs simple data normalisation and writes consolidated event-driven feeds by event type (trade, quote, reference price) to HDF5 files for downstream analytics.
+It performs simple data normalisation and writes consolidated event-driven feeds by event type (trade, quote, reference price) to Parquet files for downstream analytics.
 
 ⚠️ Designed for demonstration purposes only.\
 The main goal is to **showcase connectivity and consolidation of event-driven feeds** from multiple data sources, not to provide a production-ready system or perform data analytics.
@@ -12,12 +12,12 @@ The main goal is to **showcase connectivity and consolidation of event-driven fe
 - Buffering of incoming feeds to reduce memory overhead
 - Multi-queue design for different event types from multiple data feeds
 - Simple normalisation of feed data
-- HDF5 storage with daily partitioning by event type
+- Batch saving to Parquet storage with partitioning by event type and time
 
 ## Design Highlights
 - Async architecture demonstrates concurrent ingestion of event-driven feeds with multiple asset types
 - Python asyncio queues decouples feeds. Can be replaced with Kafka, RabbitMQ, Redis etc.
-- Daily HDF5 partitioning ensures manageable file sizes
+- Batch Parquet partitioning ensures manageable file sizes
 - Deduplication ignores created_at to preserve system ingestion timestamps
 
 ## Run / Usage
@@ -44,8 +44,8 @@ taskkill /PID <pid> /F
 ## How it Works
 - Each feed (stocks, FX, crypto) has its own async queue based on the event type (trade, quote, reference price).
 - Data is normalized before pushing to the respective queue.
-- Once the buffer reaches a threshold or on shutdown, data is flushed to HDF5 files.
-- Daily HDF5 files are named like: `consol_feeds_quote_2026_01_22.h5`.
+- Once the buffer reaches a threshold or on shutdown, data is flushed to Parquet files.
+- Parquet files are named like: `consol_feeds_quote_20260213_130922_668051.parquet`.
 
 ## Notes
 - New York timezone (America/New York) is used for timestamps for consistency
@@ -58,8 +58,8 @@ taskkill /PID <pid> /F
 - Support additional vendors and data sources
 
 ## Sample Screenshots
-### Sample HDF5 Data
-*Example HDF5 file and data shown here is **synthetic** and does not contain any real vendor data.*\
+### Sample Parquet Data
+*Example Parquet file and data shown here has been adjusted and does not contain any real vendor data.*\
 Consolidated Quotes Feeds:
 ![Consolidated Quotes Feeds Sample](assets/consol_feeds_quote.png)\
 Consolidated Trades Feeds:

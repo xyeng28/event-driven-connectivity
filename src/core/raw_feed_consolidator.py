@@ -2,53 +2,66 @@
 Raw Feed Consolidator Module
 
 This module provides functions to consolidate market feed queues (trade, quote, reference price)
-into HDF5 files. Uses asyncio for asynchronous processing.
+into Pqrquet files. Uses asyncio for asynchronous processing.
 """
-
 import asyncio
-import pandas as pd
+import os
+from collections import defaultdict
+import pyarrow as pa
+import pyarrow.parquet as pq
 from datetime import datetime as dtt
-from src.constants import NY_TZ, EVENT_TYPE_TRADE, EVENT_TYPE_QUOTE, EVENT_TYPE_REF_PX
+
+from src import constants
+from src.constants import EVENT_TYPE_TRADE, EVENT_TYPE_QUOTE, EVENT_TYPE_REF_PX
 from src.core.queue_manager import trade_queue, quote_queue, ref_px_queue
 from src.logger import get_logger
 
 logger = get_logger(__name__)
 
-async def consolidate_queue(queue, event_type, h5_dir:str='src/data/consol_feeds/', buffer_size:int=3):
+def save_to_parquet(buffer: dict, pq_dir: str, event_type: str):
     """
-    Continuously consumes message from a queue and store them into a HDF5 file
+    Save buffered events to Parquet file
+    """
+    if not buffer:
+        logger.info("Buffer is empty, skipping save")
+        return
+    table = pa.Table.from_pylist(list(buffer.values()))
+    os.makedirs(pq_dir, exist_ok=True)
+
+    ny_time = dtt.now(constants.NY_TZ)
+    timestamp = ny_time.strftime("%Y%m%d_%H%M%S_%f")
+
+    pq_fp = os.path.join(pq_dir, f"consol_feeds_{event_type}_{timestamp}.parquet")
+    pq.write_table(table, pq_fp, compression='snappy')
+    logger.info(f'Successfully saved {len(buffer)} events to consolidated feeds file {pq_fp}')
+    buffer.clear()
+
+async def consolidate_queue(queue, event_type, pq_dir:str='src/data/consol_feeds/', buffer_size:int=30):
+    """
+    Continuously consumes message from a queue and store them into a Parquet file
     Buffers messages until buffer_size is reached, removes duplicates and
     appends data to a file named by event_type and current date
     """
     logger.info(f'Consolidating queue data for {event_type}')
-    buffer = []
+    buffers = defaultdict(dict)
 
     while True:
         try:
             data = (await queue.get())['market_feed']
             logger.debug(f'data:{data}')
-            now_ny = dtt.now(NY_TZ)
-            date_str = now_ny.strftime('%Y_%m_%d')
-            h5_fp = f'{h5_dir}consol_feeds_{event_type}_{date_str}.h5'
             if data is None:
                 logger.info('Skipping empty message')
                 continue
 
-            buffer.append(data)
-            logger.info(f'len(buffer) for {event_type}:{len(buffer)}')
+            key = (data['source'], data['symbol'], data['event_time'])
+            buffers[event_type][key] = data
+            logger.info(f'len(buffers[event_type]) for {event_type}:{len(buffers[event_type])}')
 
-            if len(buffer) >= buffer_size:
-                logger.info(f'Buffer size {len(buffer)} >= threshold {buffer_size}. Writing to {h5_fp}...')
-                df = pd.DataFrame(buffer)
-                cols_to_check = df.columns.difference(['created_at'])
-                df_dups = df[df.duplicated(subset=cols_to_check, keep=False)]
-                logger.info(f'duplicates:\n{df_dups}')
-                df.drop_duplicates(subset=cols_to_check, inplace=True)
-                df.to_hdf(h5_fp, key='mkt_feed', mode='a', format='table', append=True)
-                buffer.clear()
-                logger.info(f'Successfully updated {event_type} consolidated feeds file {h5_fp}')
+            if len(buffers[event_type]) >= buffer_size:
+                logger.info(f'Buffer size {len(buffers[event_type])} >= threshold {buffer_size}.')
+                await asyncio.to_thread(save_to_parquet, buffers[event_type], pq_dir, event_type)
         except Exception as e:
-            logger.error(f'Error saving to h5 file {e}')
+            logger.error(f'Error saving to parquet file {e}')
         finally:
             queue.task_done()
 
