@@ -1,4 +1,4 @@
-src/data/data_config.py
+src/data/data_config_prod.py
 .parquet
 
 

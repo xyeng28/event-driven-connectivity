@@ -1,0 +1,8 @@
+#TIINGO KEYS
+TIINGO_WS_KEY = "SAMPLEKEY" #Need to replace with own Tiingo API key
+TIINGO_WS_BASE_URL = "wss://api.tiingo.com/"
+TIINGO_WS_IEX_URL = TIINGO_WS_BASE_URL + "iex"
+TIINGO_WS_FX_URL = TIINGO_WS_BASE_URL + "fx"
+TIINGO_WS_CRYPTO_URL = TIINGO_WS_BASE_URL + "crypto"
+
+

@@ -20,7 +20,20 @@ The main goal is to **showcase connectivity and consolidation of event-driven fe
 - Batch Parquet partitioning ensures manageable file sizes
 - Deduplication ignores created_at to preserve system ingestion timestamps
 
-## Run / Usage
+
+## Installation & Set Up
+#### 1. Create virtual environment
+cd to project directory, create and activate virtual environment
+```
+cd <path>/event-driven-connectivity
+python -m venv venv
+source venv/bin/activate
+```
+#### 2. Replace API keys
+In src/data/data_config.py, replace TIINGO_WS_KEY with own Tiingo API key
+
+
+## Run & Usage
 
 Starting the main application:
 ```bash
