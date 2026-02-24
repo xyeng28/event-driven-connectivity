@@ -20,7 +20,8 @@ import certifi
 from src.logger import get_logger
 from dateutil import parser
 from datetime import datetime as dtt
-from src.constants import NY_TZ, EVENT_TYPE_TRADE, EVENT_TYPE_QUOTE, EVENT_TYPE_REF_PX, ASSET_TYPE_CRYPTO, ASSET_TYPE_FX, ASSET_TYPE_STK
+from src.constants import NY_TZ, EVENT_TYPE_TRADE, EVENT_TYPE_QUOTE, EVENT_TYPE_REF_PX, ASSET_TYPE_CRYPTO, \
+    ASSET_TYPE_FX, ASSET_TYPE_STK, EXCH_IEX, VENDOR_TIINGO
 from src.utils import convert_dt_to_tz
 import src.data.data_config as data_cfg
 from src.core.queue_manager import trade_queue, quote_queue, ref_px_queue
@@ -73,12 +74,13 @@ async def tiingo_ws_request(subscribe_payload:dict, ws_url:str) -> AsyncGenerato
                     logger.debug(f'msg_json:{msg_json}')
                     if msg_json and msg_json.get('messageType') not in ('I', 'H'):
                         data = msg_json.get('data')
-                        logger.info(f'data:{data}')
+                        logger.debug(f'data:{data}')
                         yield data
 
         except websockets.ConnectionClosed as e:
             logger.error(f'Connection closed due to {e}. \nReconnecting...')
             await asyncio.sleep(10)
+            continue
 
 async def iex_stocks_feed(tickers:dict, threshold_level:int=6):
     """
@@ -92,7 +94,7 @@ async def iex_stocks_feed(tickers:dict, threshold_level:int=6):
     """
     subscribe_payload = get_top_book_trade_event_payload(tickers['STK']+tickers['ETF'], threshold_level=threshold_level)
     async for raw_data in tiingo_ws_request(subscribe_payload, data_cfg.TIINGO_WS_IEX_URL):
-        logger.debug(f'raw_data:{raw_data}')
+        logger.info(f'iex raw_data:{raw_data}')
         date_iso, ticker, ref_px = raw_data
         timestamp = parser.isoparse(date_iso)
         timestamp = convert_dt_to_tz(timestamp)
@@ -101,8 +103,9 @@ async def iex_stocks_feed(tickers:dict, threshold_level:int=6):
             'event_type': EVENT_TYPE_REF_PX,
             'symbol': ticker,
             'price': ref_px,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_iex',
+            'exchange': EXCH_IEX,
             'event_time': timestamp,
             'created_at': dtt.now(NY_TZ)
         }
@@ -121,7 +124,7 @@ async def fx_feed(tickers:dict, threshold_level:int=5):
     """
     subscribe_payload = get_top_book_trade_event_payload(tickers['FX'], threshold_level=threshold_level)
     async for raw_data in tiingo_ws_request(subscribe_payload, data_cfg.TIINGO_WS_FX_URL):
-        logger.debug(f'raw_data:{raw_data}')
+        logger.info(f'fx raw_data:{raw_data}')
         update_msg_type, ticker, date_iso, bid_size, bid, mid, ask_size, ask = raw_data
         timestamp = parser.isoparse(date_iso)
         timestamp = convert_dt_to_tz(timestamp)
@@ -135,14 +138,15 @@ async def fx_feed(tickers:dict, threshold_level:int=5):
             'ask': ask,
             'mid': mid,
             'event_time': timestamp,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_fx',
+            'exchange': None,
             'created_at': dtt.now(NY_TZ)
         }
         logger.debug(f'normalised_data:{normalised_data}')
         await quote_queue.put({'market_feed':normalised_data})
 
-async def crypto_feed(tickers:dict, threshold_level:int=5):
+async def crypto_feed(tickers:dict, threshold_level:int=2):
     """
     Push normalised Crypto trades and quotes data into market_feed queue
     The message is wrapped in a dictionary with the key market_feed
@@ -156,7 +160,7 @@ async def crypto_feed(tickers:dict, threshold_level:int=5):
     """
     subscribe_payload = get_top_book_trade_event_payload(tickers['CRYPTO'], threshold_level=threshold_level)
     async for raw_data in tiingo_ws_request(subscribe_payload, data_cfg.TIINGO_WS_CRYPTO_URL):
-        logger.debug(f'raw_data:{raw_data}')
+        logger.info(f'crypto raw_data:{raw_data}')
         if raw_data[0] == 'T':
             update_msg_type, ticker, date_iso, exch, last_size, last_price = raw_data
             timestamp = parser.isoparse(date_iso)
@@ -169,19 +173,19 @@ async def crypto_feed(tickers:dict, threshold_level:int=5):
                 'last_size': last_size,
                 'last_price': last_price,
                 'event_time': timestamp,
-                'vendor': 'tiingo',
+                'vendor': VENDOR_TIINGO,
                 'source': 'tiingo_crypto',
+                'exchange': exch,
                 'created_at': dtt.now(NY_TZ)
             }
         else:
-            update_msg_type, ticker, date_iso, bid_size, bid, mid, ask_size, ask = raw_data
-            event_type = EVENT_TYPE_QUOTE
+            update_msg_type, ticker, date_iso, exch, bid_size, bid, mid, ask_size, ask = raw_data
             timestamp = parser.isoparse(date_iso)
             timestamp = convert_dt_to_tz(timestamp)
             queue = quote_queue
             normalised_data = {
                 'asset_type': ASSET_TYPE_CRYPTO,
-                'event_type': event_type,
+                'event_type': EVENT_TYPE_QUOTE,
                 'symbol': ticker,
                 'bid_size': bid_size,
                 'ask_size': ask_size,
@@ -189,8 +193,9 @@ async def crypto_feed(tickers:dict, threshold_level:int=5):
                 'ask': ask,
                 'mid': mid,
                 'event_time': timestamp,
-                'vendor': 'tiingo',
+                'vendor': VENDOR_TIINGO,
                 'source': 'tiingo_crypto',
+                'exchange': exch,
                 'created_at': dtt.now(NY_TZ)
             }
         logger.debug(f'normalised_data:{normalised_data}')

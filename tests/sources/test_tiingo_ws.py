@@ -7,6 +7,7 @@ from datetime import datetime as dtt
 from dateutil import parser
 
 from src import constants
+from src.constants import VENDOR_TIINGO, EXCH_IEX
 from src.data.sources.tiingo_ws import get_top_book_trade_event_payload, tiingo_ws_request, iex_stocks_feed, fx_feed, \
     crypto_feed
 from src.data import data_config as data_cfg
@@ -31,25 +32,58 @@ class TestTiingoWS(unittest.TestCase):
             }
         }
         tiingo_ws_url = 'tiingo_example_123.com/ws'
-        mock_msgs = [
-            json.dumps({'messageType':'I'}),
-            json.dumps({'service': 'iex', 'messageType': 'A', 'data': ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7]}),
-            json.dumps({'messageType':'H'}),
-            json.dumps({'service': 'iex', 'messageType': 'T', 'data': ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7]}),
+        mock_msgs_1 = [
+            json.dumps({'messageType': 'I'}),
+            json.dumps({'service': 'iex', 'messageType': 'A',
+                        'data': ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7]}),
+            ConnectionClosedOK(None, None)
         ]
-        mock_ws = AsyncMock()
-        mock_ws.recv = AsyncMock(side_effect=(mock_msgs + [ConnectionClosedOK(None, None)]))
-        mock_ws.send = AsyncMock()
+        mock_ws1 = AsyncMock()
+        mock_ws1.recv = AsyncMock(side_effect=mock_msgs_1)
+        mock_ws1.send = AsyncMock()
+
+        mock_msgs_2 = [
+            json.dumps({'messageType': 'H'}),
+            json.dumps({'service': 'iex', 'messageType': 'T',
+                        'data': ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7]}),
+            ConnectionClosedOK(None, None)
+        ]
+        mock_ws2 = AsyncMock()
+        mock_ws2.recv = AsyncMock(side_effect=mock_msgs_2)
+        mock_ws2.send = AsyncMock()
 
         async def run_tiingo_ws_request():
-            with patch('websockets.connect') as mock_connect:
-                mock_connect.return_value.__aenter__.return_value = mock_ws
-                mock_connect.return_value.__aexit__.return_value = None
+            with patch('websockets.connect') as mock_connect, \
+                    patch('asyncio.sleep', new=AsyncMock()):  # prevent 10s delay
+                mock_connect.side_effect = [
+                    AsyncMock(
+                        __aenter__=AsyncMock(return_value=mock_ws1),
+                        __aexit__=AsyncMock(return_value=None)
+                    ),
+                    AsyncMock(
+                        __aenter__=AsyncMock(return_value=mock_ws2),
+                        __aexit__=AsyncMock(return_value=None)
+                    ),
+                ]
                 raw_data = tiingo_ws_request(subscribe_payload, tiingo_ws_url)
-                return [data async for data in raw_data]
+                results = []
+                async for data in raw_data:
+                    results.append(data)
+                    if len(results) == 2:  # stop after second reconnect message
+                        break
+                return results
+
         data_feeds = asyncio.run(run_tiingo_ws_request())
-        self.assertEqual(data_feeds, [['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7], ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7]])
-        mock_ws.send.assert_awaited_once_with(json.dumps(subscribe_payload))
+
+        self.assertEqual(
+            data_feeds,
+            [
+                ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7],
+                ['1990-01-01T12:37:36.425451499-05:00', 'spy', 10.7]
+            ]
+        )
+        mock_ws1.send.assert_awaited_once_with(json.dumps(subscribe_payload))
+        mock_ws2.send.assert_awaited_once_with(json.dumps(subscribe_payload))
 
     def test_iex_stocks_feed(self):
         tickers = {
@@ -78,8 +112,9 @@ class TestTiingoWS(unittest.TestCase):
             'event_type': constants.EVENT_TYPE_REF_PX,
             'symbol': 'spy',
             'price': 10.735,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_iex',
+            'exch': EXCH_IEX,
             'event_time': exp_event_time,
             'created_at': dtt.now(constants.NY_TZ)
         }
@@ -124,8 +159,9 @@ class TestTiingoWS(unittest.TestCase):
             'ask': 11.59447,
             'mid': 11.590365,
             'event_time': exp_event_time,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_fx',
+            'exch': None,
             'created_at': dtt.now(constants.NY_TZ)
         }
         self.assertEqual(feed['asset_type'], exp_data['asset_type'])
@@ -148,7 +184,7 @@ class TestTiingoWS(unittest.TestCase):
         }
 
         async def mock_tiingo_ws_req(*args, **kwargs):
-            yield ['Q', 'btceth', '1990-02-22T16:35:45.725000+00:00', 100000.0, 11.58626, 11.590365, 100000.0, 11.59447]
+            yield ['Q', 'btceth', '1990-02-22T16:35:45.725000+00:00', 'gdax', 100000.0, 11.58626, 11.590365, 100000.0, 11.59447]
             yield ['T', 'eurusd', '1990-01-22T17:37:32.177890+00:00', 'kraken', 49.1372016, 1.174045259378473]
         async def run_test_crypto_feed():
             trade_queue = asyncio.Queue()
@@ -179,8 +215,9 @@ class TestTiingoWS(unittest.TestCase):
             'ask': 11.59447,
             'mid': 11.590365,
             'event_time': exp_quote_event_time,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_crypto',
+            'exch': 'gdax',
             'created_at': dtt.now(constants.NY_TZ)
         }
         exp_trade_event_time = parser.isoparse('1990-01-22T17:37:32.177890+00:00')
@@ -192,8 +229,9 @@ class TestTiingoWS(unittest.TestCase):
             'last_size': 49.1372016,
             'last_price': 1.174045259378473,
             'event_time': exp_trade_event_time,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_crypto',
+            'exch': 'kraken',
             'created_at': dtt.now(constants.NY_TZ)
             }
         self.assertEqual(quote_feed['asset_type'], exp_quote_data['asset_type'])

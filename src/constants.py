@@ -11,5 +11,8 @@ EVENT_TYPE_TRADE = 'trade'
 EVENT_TYPE_QUOTE = 'quote'
 EVENT_TYPE_REF_PX = 'ref_px'
 
+VENDOR_TIINGO = 'tiingo'
+
+EXCH_IEX = 'IEX'
 
 

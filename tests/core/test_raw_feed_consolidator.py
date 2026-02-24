@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch, AsyncMock, MagicMock
 import asyncio
 from src import constants
+from src.constants import VENDOR_TIINGO
 from src.core.raw_feed_consolidator import consolidate_queue, run_consolidator, save_to_parquet
 
 
@@ -51,7 +52,7 @@ class TestRawFeedConsolidator(unittest.IsolatedAsyncioTestCase):
             'event_type': constants.EVENT_TYPE_REF_PX,
             'symbol': 'AAPL',
             'price': 10.735,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_iex',
             'event_time': '2026-02-14T09:30:00',
             'created_at': '2026-02-14T09:30:00'
@@ -61,7 +62,7 @@ class TestRawFeedConsolidator(unittest.IsolatedAsyncioTestCase):
             'event_type': constants.EVENT_TYPE_QUOTE,
             'symbol': 'AAPL',
             'price': 10.735,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_iex',
             'event_time': '2026-02-14T09:30:00',
             'created_at': '2026-02-14T09:30:00'
@@ -71,7 +72,7 @@ class TestRawFeedConsolidator(unittest.IsolatedAsyncioTestCase):
             'event_type': constants.EVENT_TYPE_QUOTE,
             'symbol': 'GOOGL',
             'price': 10.735,
-            'vendor': 'tiingo',
+            'vendor': VENDOR_TIINGO,
             'source': 'tiingo_iex',
             'event_time': '2026-02-14T09:30:00',
             'created_at': '2026-02-14T09:30:00'
